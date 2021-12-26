@@ -9,8 +9,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.readBytes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import space.jetbrains.api.runtime.SpaceHttpClientWithCallContext
 import java.nio.file.Files
@@ -21,13 +20,13 @@ import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 import kotlin.streams.toList
 
-suspend fun SpaceHttpClientWithCallContext.extractImage(
+fun SpaceHttpClientWithCallContext.extractImage(
     client: HttpClient,
     spaceUrl: String,
     parent: Path,
     imageId: String,
     imageFileName: String,
-) {
+) = runBlocking {
     val request = HttpRequestBuilder().apply {
         val token = callContext.tokenSource.token()
         url("$spaceUrl/d/$imageId")
@@ -39,27 +38,24 @@ suspend fun SpaceHttpClientWithCallContext.extractImage(
     file.writeBytes(response.readBytes())
 }
 
-private val regex = """!\[(?<fileName>.*)]\(/d/(?<id>.*)\?f=0""".toRegex()
+private val regex = """!\[(?<alt>.*)]\(/d/(?<id>.*)\?f=0""".toRegex()
 
-suspend fun SpaceHttpClientWithCallContext.processDocument(client: HttpClient, spaceUrl: String, path: Path) {
+fun SpaceHttpClientWithCallContext.processDocument(client: HttpClient, spaceUrl: String, path: Path) {
     val documentBody = path.readText()
     val logger = LoggerFactory.getLogger("space-document-extractor")
     logger.info("Processing file $path...")
-    coroutineScope {
-        val newText = documentBody.replace(regex) {
-            val id = it.groups["id"]?.value ?: error("Unexpected reference format: ${it.value}")
-            val fileName = it.groups["fileName"]?.value ?: id
-            launch {
-                logger.info("Downloading image $id")
-                extractImage(client, spaceUrl, path.parent, id, fileName)
-            }
-            "![](images/$fileName"
-        }
-        path.writeText(newText)
+    val newText = documentBody.replace(regex) {
+        val id = it.groups["id"]?.value ?: error("Unexpected reference format: ${it.value}")
+        val alt = it.groups["alt"]?.value
+        logger.info("Downloading image $id as images/$id")
+        extractImage(client, spaceUrl, path.parent, id, id)
+        "![$alt](images/$id"
     }
+    path.writeText(newText)
+
 }
 
-suspend fun SpaceHttpClientWithCallContext.processDirectory(
+fun SpaceHttpClientWithCallContext.processDirectory(
     client: HttpClient,
     spaceUrl: String,
     path: Path,

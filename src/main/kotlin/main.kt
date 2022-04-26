@@ -1,25 +1,39 @@
 package ru.mipt.npm.space.documentextractor
 
-import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
 import kotlinx.cli.required
-import space.jetbrains.api.runtime.SpaceHttpClient
-import space.jetbrains.api.runtime.SpaceHttpClientWithCallContext
-import space.jetbrains.api.runtime.withServiceAccountTokenSource
+import kotlinx.coroutines.coroutineScope
+import space.jetbrains.api.runtime.SpaceAppInstance
+import space.jetbrains.api.runtime.SpaceAuth
+import space.jetbrains.api.runtime.SpaceClient
+import space.jetbrains.api.runtime.ktorClientForSpace
+import space.jetbrains.api.runtime.resources.projects
+import space.jetbrains.api.runtime.types.FolderIdentifier
+import space.jetbrains.api.runtime.types.ProjectIdentifier
+import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.isDirectory
 
 suspend fun main(args: Array<String>) {
     val parser = ArgParser("space-document-extractor")
-    val path by parser.option(ArgType.String, description = "Input file or directory").required()
 
     val spaceUrl by parser.option(
         ArgType.String,
         description = "Url of the space instance like 'https://mipt-npm.jetbrains.space'"
     ).required()
+
+    val project by parser.option(
+        ArgType.String,
+        description = "The key of the exported project"
+    ).required()
+
+    val path: String? by parser.option(ArgType.String, description = "Target directory. Default is current directory")
+
+    val folderId: String? by parser.option(
+        ArgType.String,
+        description = "FolderId for the folder to export"
+    )
 
     val clientId by parser.option(
         ArgType.String,
@@ -31,26 +45,29 @@ suspend fun main(args: Array<String>) {
         description = "Space application client secret (if not defined, use environment value 'space.clientSecret')"
     )
 
-
     parser.parse(args)
 
-    val pathValue: Path = Path.of(path)
+    val target: Path = path?.let { Path.of(path) } ?: Path.of("output/$project")
 
-    if (!pathValue.exists()) {
-        error("File or directory not found at $path")
-    }
+    Files.createDirectories(target)
 
-    val client = HttpClient(CIO)
-    val space: SpaceHttpClientWithCallContext = SpaceHttpClient(client).withServiceAccountTokenSource(
-        clientId = clientId ?: System.getProperty("space.clientId"),
-        clientSecret = clientSecret ?: System.getProperty("space.clientSecret"),
-        serverUrl = "https://mipt-npm.jetbrains.space"
+
+    val space: SpaceClient = SpaceClient(
+        ktorClientForSpace(CIO),
+        SpaceAppInstance(
+            clientId ?: System.getProperty("space.clientId"),
+            clientSecret ?: System.getProperty("space.clientSecret"),
+            spaceUrl
+        ),
+        SpaceAuth.ClientCredentials()
     )
 
-    if (pathValue.isDirectory()) {
-        space.processDirectory(client, spaceUrl, pathValue)
-    } else {
-        space.processDocument(client, spaceUrl, pathValue)
+    coroutineScope {
+        println("Processing project \"${space.projects.getProject(ProjectIdentifier.Key(project)).name}\"")
+        space.downloadAndProcessDocumentsInProject(
+            target,
+            ProjectIdentifier.Key(project),
+            folderId?.let { FolderIdentifier.Id(it) } ?: FolderIdentifier.Root
+        )
     }
-
 }

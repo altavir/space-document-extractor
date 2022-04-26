@@ -20,7 +20,7 @@ dependencies {
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-auth:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-cli:0.3.4")
-    implementation("org.jetbrains:space-sdk-jvm:86641-beta")
+    implementation("org.jetbrains:space-sdk-jvm:98244-beta")
     implementation("ch.qos.logback:logback-classic:1.2.10")
     testImplementation(kotlin("test"))
 }

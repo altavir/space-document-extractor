@@ -28,11 +28,11 @@ suspend fun main(args: Array<String>) {
         description = "The key of the exported project"
     ).required()
 
-    val path: String? by parser.option(ArgType.String, description = "Target directory. Default is current directory")
+    val path: String? by parser.option(ArgType.String, description = "Target directory. Default is './output/project-key'.")
 
     val folderId: String? by parser.option(
         ArgType.String,
-        description = "FolderId for the folder to export"
+        description = "FolderId for the folder to export. By default uses project root."
     )
 
     val clientId by parser.option(
@@ -50,7 +50,6 @@ suspend fun main(args: Array<String>) {
     val target: Path = path?.let { Path.of(path) } ?: Path.of("output/$project")
 
     Files.createDirectories(target)
-
 
     val space: SpaceClient = SpaceClient(
         ktorClientForSpace(CIO),

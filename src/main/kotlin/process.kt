@@ -11,6 +11,7 @@ import io.ktor.utils.io.jvm.javaio.copyTo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import space.jetbrains.api.runtime.Batch
 import space.jetbrains.api.runtime.SpaceClient
@@ -23,6 +24,9 @@ import kotlin.streams.toList
 
 private val logger by lazy { LoggerFactory.getLogger("space-extractor") }
 
+/**
+ * Extract single attachment image
+ */
 internal suspend fun SpaceClient.extractImage(
     parent: Path,
     imageId: String,
@@ -39,7 +43,10 @@ internal suspend fun SpaceClient.extractImage(
     file.writeBytes(response.readBytes())
 }
 
-internal suspend fun SpaceClient.extractDocument(
+/**
+ * Extract single file
+ */
+internal suspend fun SpaceClient.extractFile(
     parent: Path,
     documentId: String,
     documentFileName: String,
@@ -59,6 +66,9 @@ internal suspend fun SpaceClient.extractDocument(
 
 private val regex = """!\[(?<alt>.*)]\(/d/(?<id>.*)\?f=0""".toRegex()
 
+/**
+ * Post-process a markdown document by downloading images and replacing links
+ */
 internal suspend fun SpaceClient.processMarkdownDocument(path: Path)  = coroutineScope{
     val documentBody = path.readText()
     val logger = LoggerFactory.getLogger("space-document-extractor")
@@ -73,7 +83,6 @@ internal suspend fun SpaceClient.processMarkdownDocument(path: Path)  = coroutin
         "![$alt](images/$id"
     }
     path.writeText(newText)
-
 }
 
 /**
@@ -94,6 +103,9 @@ internal suspend fun SpaceClient.processMarkdownInDirectory(
     }
 }
 
+/**
+ * Download single Space document
+ */
 internal suspend fun SpaceClient.downloadDocument(
     directory: Path,
     document: Document,
@@ -101,7 +113,7 @@ internal suspend fun SpaceClient.downloadDocument(
     when (val body = document.documentBody) {
         is FileDocumentBody -> {
             launch(Dispatchers.IO) {
-                extractDocument(directory, document.id, document.title)
+                extractFile(directory, document.id, document.title)
             }
         }
         is TextDocument -> {
@@ -115,6 +127,9 @@ internal suspend fun SpaceClient.downloadDocument(
     }
 }
 
+/**
+ * Download all documents and subfolders in a folder
+ */
 internal suspend fun SpaceClient.downloadDocumentFolder(
     directory: Path,
     projectId: ProjectIdentifier,
@@ -142,11 +157,14 @@ internal suspend fun SpaceClient.downloadDocumentFolder(
     }
 }
 
+/**
+ * Download all documents in a project or a folder with given [rootFolder] and postprocess files
+ */
 suspend fun SpaceClient.downloadAndProcessDocumentsInProject(
     directory: Path,
     projectId: ProjectIdentifier,
     rootFolder: FolderIdentifier = FolderIdentifier.Root,
-) {
+) = withContext(Dispatchers.IO){
     logger.info("Processing project ${projectId.compactId} to $directory")
     downloadDocumentFolder(directory, projectId, rootFolder)
     processMarkdownInDirectory(directory)
